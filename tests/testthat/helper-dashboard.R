@@ -1,5 +1,5 @@
 project_root <- normalizePath(file.path('..', '..'), mustWork = TRUE)
-for (file in c('utils.R', 'data.R', 'analysis.R', 'comparison.R', 'forecast.R', 'filters.R')) {
+for (file in c('utils.R', 'data.R', 'analysis.R', 'comparison.R', 'forecast.R', 'filters.R', 'selection_images.R')) {
   source(file.path(project_root, 'R', file), local = FALSE)
 }
 

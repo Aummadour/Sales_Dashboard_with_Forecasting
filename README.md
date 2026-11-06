@@ -46,6 +46,12 @@ Select dates, bike types, bike families and stores, then choose Apply. Historica
 
 The default window is 2022-2025. The Mountain to Road ratio uses bike counts. It does not count order lines, and it is unavailable when the Road denominator is zero. The map uses local contiguous U.S. polygons and has an accessible state revenue table. Both light and dark views have readable labels and keyboard focus styles.
 
+The selection illustrations use the applied stores, bike types and families. Pending controls leave them unchanged. Apply updates the images with the analytical selection. Reset restores all defaults. The gallery starts collapsed and shows counts. Open it to browse every selected value in horizontal lists. It does not choose one image to represent several stores or categories.
+
+AI-generated fictional illustrations. Storefronts are fictional premises. Bicycle images show categories, not specific product models. A family label states its parent bike type. If that type is absent from the applied filters, the gallery says so. This label does not change the filters or imply matching sales. Empty, unknown and missing images have text states.
+
+The local image catalog binds the eight synthetic store IDs and names, two bike types and four families. Images load only from `www/selection-images`. Local file checks refuse missing files, symbolic links, external URLs and paths outside that folder. The 14 WebP images keep the complete 960 by 640 frame (3:2). They total 1,432,252 bytes. Each file is from 41,938 to 195,722 bytes. The images received a review for each image and one artist revision before integration.
+
 ## Forecast validation
 
 The fixed evaluation rule holds out the last six complete selected months, after at least 36 training months. The model is a regression of `log(1 + revenue)` on time and month. The seasonal naive baseline repeats the matching month from the prior year. Both show MAE and RMSE in USD/month. The baseline may win.
