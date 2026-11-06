@@ -197,7 +197,7 @@ try {
   const appliedCopy = await evaluate(`[...document.querySelectorAll('p')].map(node => node.innerText).filter(text => text.includes('Applied stores:'))`);
   records.push({ appliedFilterCopy: appliedCopy });
   assert.equal(appliedCopy.length, 2);
-  assert.ok(appliedCopy.every(text => text.includes('Canal Bicycle. Bike types: Mountain, Road. Families:') && !/ \\./.test(text)));
+  assert.ok(appliedCopy.every(text => text.includes('Canal Bicycle. Bike types: Mountain, Road. Families:') && !/ \./.test(text)));
   assert.doesNotMatch(await evaluate('document.body.innerText'), /this PR/i);
   assert.match(await evaluate(`document.querySelector('#forecast_metrics').innerText`), /MAE \(USD\/month\)|MAE/);
   await command('Emulation.setDeviceMetricsOverride', { width: 1440, height: 1440, deviceScaleFactor: 1, mobile: false });

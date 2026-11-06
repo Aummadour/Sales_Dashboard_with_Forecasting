@@ -1,5 +1,9 @@
 # Bicycle sales dashboard
 
+![Illustration of a fictional bicycle shop. Decorative chart, not app output.](docs/screenshots/sales-header.png)
+
+Illustration of a fictional bicycle shop. Decorative chart, not app output.
+
 An R Shiny portfolio dashboard for synthetic bicycle store sales. It keeps flexdashboard, interactive maps, database joins and store, category and date filters. It adds reproducible data, evaluated monthly forecasts and an original explanation of period revenue changes.
 
 The business questions are simple: where did selected sales occur, how did revenue change over time, how well does a modest forecast compare with last year's seasonal pattern, and how much of a period change comes from bike volume, category mix and weighted price?
