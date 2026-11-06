@@ -12,7 +12,7 @@ Default configuration: seed `20261106`, coverage January 1, 2016 through Decembe
 | `month_coverage` | `month`: unique first day of each month in the declared span. `is_complete`: whether all sales for that month are represented. |
 | `metadata` | One row with `schema_version`, `seed`, `coverage_start` and `coverage_end`. Version 1 is this synthetic schema. |
 
-The original product and customer join keys remain. Transaction price and coverage metadata are additions in this PR. SQLite joins order lines to stores and bikes and computes `quantity * unit.price` before `collect()`. Weighted prices and revenue use the transaction price. Reference product price is not substituted for it.
+The original product and customer join keys remain. The new data generator adds transaction price and coverage metadata. SQLite joins order lines to stores and bikes and computes `quantity * unit.price` before `collect()`. Weighted prices and revenue use the transaction price. Reference product price is not substituted for it.
 
 Schema checks reject missing columns or values, duplicate keys, broken foreign keys, invalid dates, dates outside coverage, noninteger quantities and invalid prices. The loader checks that the joins preserve the line count. A missing database fails before a connection can create an empty file. Connections close on success and error. The generator uses a temporary database, validates its tables and refuses to replace an existing output unless `--overwrite` is explicit.
 

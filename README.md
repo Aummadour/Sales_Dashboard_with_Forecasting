@@ -57,11 +57,15 @@ The default synthetic run uses seed `20261106` and 26,118 order lines. Training 
 
 The baseline wins on both measures. The model and split were fixed before this run. No tuning followed these results. The future forecast uses a separate refit through December 2025. The default 12 month horizon covers January through December 2026.
 
-The native test suite passed 141 assertions for schema and calendar rules, real isolated SQLite joins and cleanup, Apply/Reset behavior, no leakage, literal baseline errors, independent prediction interval calculations and exact accounting components.
+The native R test suite passed 167 assertions. These include the original 141 assertions for data, calendars, real isolated SQLite joins and cleanup, Apply/Reset, no leakage, baseline errors, prediction intervals and accounting. Another 26 focused map assertions check polygon labels, zero sales colors and scalar DC hover values in built and serialized traces. Four Node helper cases check default capture preservation, explicit image updates and the real missing executable path.
 
 The real browser check passed Apply, invalid horizon refusal, Reset, empty store refusal, retained state through desktop/phone resize, plot containment and visible accounting reconciliation. It observed no external page asset request or JavaScript exception. The phone page width was 390 pixels at a 390 pixel viewport. Measured light body, dark body and dark table heading contrast all exceeded 4.5:1. These checks do not claim a complete accessibility audit.
 
-To repeat the optional browser check, start the synthetic app first. Use an installed Chrome and Node with global WebSocket support (tested with Chrome 156 and Node 26.8.2). Run `DASHBOARD_URL=http://127.0.0.1:7431/ DASHBOARD_EVIDENCE_DIR=.runtime/browser-run-1 node scripts/browser_smoke.mjs`. Choose a new evidence directory for each run. Use a short private TMPDIR if your system's temporary path exceeds Chrome's socket path limit. The script opens a fresh browser profile and closes its owned browser group. Stop the separate R app when finished.
+To repeat the optional browser check, start the synthetic app first. Use an installed Chrome and Node with global WebSocket support (tested with Chrome 156 and Node 26.8.2). Run `DASHBOARD_URL=http://127.0.0.1:7431/ DASHBOARD_EVIDENCE_DIR=.runtime/browser-run-1 node scripts/browser_smoke.mjs`. Choose a new evidence directory for each run. Captures go to that directory's `screenshots` folder. This default check preserves the tracked images.
+
+To refresh `docs/screenshots`, opt in explicitly: `DASHBOARD_UPDATE_SCREENSHOTS=1 DASHBOARD_URL=http://127.0.0.1:7431/ DASHBOARD_EVIDENCE_DIR=.runtime/browser-run-2 node scripts/browser_smoke.mjs`. This mode also keeps the run originals. Inspect the new images before committing them. File output and missing Chrome controls run with `node --test tests/browser_capture.test.mjs tests/browser_launch.test.mjs`.
+
+Use a short private TMPDIR if your system's temporary path exceeds Chrome's socket path limit. The script opens a fresh browser profile and closes its owned browser group. A missing executable reports its original launch error and removes its unused profile. Stop the separate R app when finished.
 
 ## Actual app views
 
@@ -81,7 +85,7 @@ Phone comparison in dark appearance, 390 by 844:
 
 ## My contributions
 
-Added in this PR:
+The work added to the course dashboard includes:
 
 - A deterministic synthetic SQLite generator, schema and coverage checks, data dictionary and connection cleanup.
 - One applied filter/settings state, useful empty and invalid states, defined ratio units and responsive light/dark styling.
@@ -89,7 +93,7 @@ Added in this PR:
 - An original period comparison that reconciles volume, category mix and weighted price with the exact revenue change. [Accounting definitions and zero cases](docs/revenue-comparison.md).
 - Behavioral tests for data, calendars, filters, validation, intervals and accounting.
 
-This project builds on a course dashboard. The exact course title, version and reuse terms have not been supplied. The original history, helper entry point and historical dependency records remain. No repository license is selected by this PR. The owner should confirm course reuse terms before choosing one.
+This project builds on a course dashboard. The exact course title, version and reuse terms have not been supplied. The original history, helper entry point and historical dependency records remain. No repository license has been selected. The owner should confirm course reuse terms before choosing one.
 
 ## Existing demo
 

@@ -58,7 +58,7 @@ state_revenue_plot <- function(sales, dark = FALSE) {
   separators <- which(is.na(shapes$x))
   ends <- if (tail(separators, 1) == length(shapes$x)) separators - 1L else c(separators - 1L, length(shapes$x))
   starts <- c(1L, separators + 1L)[seq_along(ends)]
-  code <- setNames(state.abb, tolower(state.name))
+  code <- c(setNames(state.abb, tolower(state.name)), 'district of columbia' = 'DC')
   revenue <- if (nrow(sales)) tapply(sales$extended_price, sales$state, sum) else numeric()
   maximum <- if (length(revenue)) max(revenue) else 0
   palette <- grDevices::colorRampPalette(c('#dce9f5', '#1764a0'))(100)
@@ -66,7 +66,9 @@ state_revenue_plot <- function(sales, dark = FALSE) {
   for (index in seq_along(ends)) {
     if (starts[index] > ends[index]) next
     name <- sub(':.*$', '', shapes$names[index])
-    state <- unname(code[name]); value <- unname(revenue[state])
+    state <- unname(code[name])
+    if (!length(state) || is.na(state) || !nzchar(state)) state <- name
+    value <- unname(revenue[state])
     if (!length(value) || is.na(value)) value <- 0
     colour <- if (value == 0) { if (dark) '#344455' else '#e7ebef' } else palette[max(1, ceiling(100 * value / maximum))]
     rows <- starts[index]:ends[index]
@@ -76,7 +78,15 @@ state_revenue_plot <- function(sales, dark = FALSE) {
       showlegend = FALSE, name = toupper(state))
   }
   plot <- plot_theme(plot, dark)
-  plotly::layout(plot, xaxis = list(title = '', visible = FALSE, range = c(-126, -66)),
+  plot <- plotly::layout(plot, xaxis = list(title = '', visible = FALSE, range = c(-126, -66)),
     yaxis = list(title = '', visible = FALSE, range = c(24, 50), scaleanchor = 'x', scaleratio = 1.25),
     margin = list(l = 0, r = 0, t = 0, b = 0), dragmode = FALSE)
+  # The R builder recycles text into point arrays. Filled polygons need scalar labels.
+  plot <- plotly::plotly_build(plot)
+  for (index in seq_along(plot$x$data)) {
+    trace <- plot$x$data[[index]]
+    plot <- plotly::style(plot, name = unique(as.character(trace$name)),
+      text = unique(as.character(trace$text)), hoverinfo = 'text', traces = index)
+  }
+  plot
 }

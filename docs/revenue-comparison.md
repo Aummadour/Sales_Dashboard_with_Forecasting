@@ -1,6 +1,6 @@
 # Original period comparison
 
-Added in this PR: compare selected stores and categories in the applied inclusive date range with the immediately preceding equal number of days. Both periods must fit within declared complete data coverage. The comparison reports revenue, bikes and weighted unit prices. It does not compare unequal calendar durations or silently treat unknown dates as zero.
+Compare selected stores and categories in the applied inclusive date range with the immediately preceding equal number of days. Both periods must fit within declared complete data coverage. The comparison reports revenue, bikes and weighted unit prices. It does not compare unequal calendar durations or silently treat unknown dates as zero.
 
 For each category (bike type and family), let `q` be bikes, `p` be revenue divided by bikes, `Q` be all selected bikes and `s = q / Q`. Subscript 0 is previous and 1 is current. Revenue is `Q * sum(s * p)`.
 

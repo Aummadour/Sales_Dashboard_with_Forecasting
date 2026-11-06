@@ -2,9 +2,10 @@
 // Uses an installed Node with global WebSocket and an installed Chrome. No npm packages.
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
-import { mkdtemp, readFile, readdir, mkdir, writeFile, rm } from 'node:fs/promises';
+import { mkdtemp, readFile, readdir, mkdir, writeFile, rm, lstat, rmdir } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
+import { saveCapture } from './browser_capture.mjs';
 
 const target = new URL(process.env.DASHBOARD_URL ?? 'http://127.0.0.1:7431/');
 if (target.protocol !== 'http:' || target.hostname !== '127.0.0.1' || !target.port || target.username || target.password) {
@@ -13,9 +14,10 @@ if (target.protocol !== 'http:' || target.hostname !== '127.0.0.1' || !target.po
 if (typeof WebSocket !== 'function') throw new Error('Use a qualified Node version with global WebSocket.');
 const evidence = resolve(process.env.DASHBOARD_EVIDENCE_DIR ?? '.runtime/browser-smoke');
 const images = resolve('docs/screenshots');
+const updateImages = process.env.DASHBOARD_UPDATE_SCREENSHOTS === '1';
 await mkdir(evidence, { recursive: true });
-await mkdir(images, { recursive: true });
 const profile = await mkdtemp(join(tmpdir(), 'bicycle-browser-'));
+const profileIdentity = await lstat(profile);
 const chrome = spawn(process.env.CHROME_BIN ?? '/usr/bin/google-chrome', [
   '--headless=new', '--disable-gpu', '--no-first-run', '--no-default-browser-check',
   '--disable-extensions', '--disable-sync', '--disable-background-networking',
@@ -23,7 +25,11 @@ const chrome = spawn(process.env.CHROME_BIN ?? '/usr/bin/google-chrome', [
   '--remote-debugging-port=0', `--user-data-dir=${profile}`, '--window-size=1440,1080', 'about:blank',
 ], { detached: true, stdio: ['ignore', 'ignore', 'pipe'] });
 let spawnError;
-chrome.on('error', error => { spawnError = error; });
+let childCreated = false;
+const launched = new Promise((resolve, reject) => {
+  chrome.once('spawn', () => { childCreated = true; resolve(); });
+  chrome.once('error', error => { spawnError = error; reject(error); });
+});
 const exited = new Promise(resolve => chrome.once('exit', resolve));
 const alive = () => chrome.exitCode === null && chrome.signalCode === null && !spawnError;
 let stderr = '';
@@ -93,11 +99,8 @@ const capture = async name => {
   await delay(300);
   const shot = await command('Page.captureScreenshot', { format: 'png', captureBeyondViewport: false });
   const bytes = Buffer.from(shot.data, 'base64');
-  // Keep each run's original capture even when a later run replaces the public image.
-  await mkdir(join(evidence, 'screenshots'), { recursive: true });
-  await writeFile(join(evidence, 'screenshots', name), bytes, { flag: 'wx' });
-  await writeFile(join(images, name), bytes);
-  records.push({ screenshot: name, viewport: await evaluate('({ width: innerWidth, height: innerHeight })') });
+  await saveCapture({ evidence, images, name, bytes, updateImages });
+  records.push({ screenshot: name, publicImageUpdated: updateImages, viewport: await evaluate('({ width: innerWidth, height: innerHeight })') });
 };
 const scrollTo = async heading => evaluate(`(() => {
   const element = [...document.querySelectorAll('.chart-title')].find(node => node.textContent.trim() === ${JSON.stringify(heading)});
@@ -106,6 +109,7 @@ const scrollTo = async heading => evaluate(`(() => {
   return true;
 })()`);
 try {
+  await launched;
   ownership = await processState(chrome.pid);
   assert.ok(ownership && ownership.pgid === chrome.pid && ownership.sid === chrome.pid);
   await writeFile(join(evidence, 'OWNED-CHROME.json'), JSON.stringify({ ...ownership, profile, target: target.href, argv: chrome.spawnargs }, null, 2) + '\n', { flag: 'wx' });
@@ -158,6 +162,27 @@ try {
   records.push({ lightContrast: { ...light, ratio: contrast(light.color, light.background) } });
   await evaluate("document.documentElement.dataset.smokeDocument = 'applied-selection-document'");
   assert.match(await evaluate('document.body.innerText'), /Synthetic USD revenue/);
+  const mapLabels = await evaluate(`(() => {
+    const plot = [...document.querySelectorAll('.js-plotly-plot')].find(plot => plot._fullData?.some(trace => trace.fill === 'toself'));
+    const traces = plot._fullData.filter(trace => trace.fill === 'toself');
+    const index = plot._fullData.findIndex(trace => trace.name === 'DC');
+    const dc = plot._fullData[index];
+    const path = index >= 0 ? plot.querySelector('.scatterlayer').children[index].querySelector('.js-fill') : null;
+    const box = path?.getBoundingClientRect();
+    return { names: traces.map(trace => trace.name), dc: dc ? { name: dc.name, text: dc.text, fillcolor: dc.fillcolor, hoveron: dc.hoveron } : null,
+      hoverPoint: box ? { x: box.left + box.width / 2, y: box.top + box.height / 2 } : null };
+  })()`);
+  records.push({ renderedMap: mapLabels });
+  assert.ok(mapLabels.names.every(name => typeof name === 'string' && /^[A-Z]{2}$/.test(name)), 'Every rendered polygon must have a state or DC label.');
+  assert.equal(mapLabels.dc?.name, 'DC');
+  assert.ok([mapLabels.dc.text].flat().every(text => text === 'DC: $0.00'));
+  assert.equal(mapLabels.dc.fillcolor, '#e7ebef');
+  assert.ok(mapLabels.hoverPoint);
+  await command('Input.dispatchMouseEvent', { type: 'mouseMoved', ...mapLabels.hoverPoint });
+  await waitFor(`[...document.querySelectorAll('.hoverlayer')].some(node => node.textContent.includes('DC: $0.00'))`, 'actual DC polygon hover', 15000);
+  records.push({ actualDCHover: await evaluate(`[...document.querySelectorAll('.hoverlayer')].map(node => node.textContent).filter(text => text.includes('DC: $0.00'))`) });
+  await evaluate(`[...document.querySelectorAll('.js-plotly-plot')].filter(plot => plot._fullData?.some(trace => trace.fill === 'toself')).forEach(plot => Plotly.Fx.unhover(plot))`);
+  await command('Input.dispatchMouseEvent', { type: 'mouseMoved', x: 10, y: 10 });
   await capture('overview-desktop.png');
   // Use actual input widgets. Changes must not affect the applied scope until Apply.
   await evaluate(`document.querySelector('#filters-shops').selectize.setValue(['Canal Bicycle']);
@@ -169,6 +194,11 @@ try {
   await waitFor(`document.querySelector('.scope-text')?.innerText.includes('Canal Bicycle') && document.querySelector('#forecast_metrics table')?.innerText.includes('Seasonal naive') && document.body.innerText.includes('Future horizon: 6 months') && !document.documentElement.classList.contains('shiny-busy')`, 'coherent applied forecast selection');
   assert.notEqual(await evaluate(`document.querySelector('.kpi-group').innerText`), initial.metrics);
   assert.match(await evaluate('document.body.innerText'), /Synthetic data accuracy says nothing about real retail performance/);
+  const appliedCopy = await evaluate(`[...document.querySelectorAll('p')].map(node => node.innerText).filter(text => text.includes('Applied stores:'))`);
+  records.push({ appliedFilterCopy: appliedCopy });
+  assert.equal(appliedCopy.length, 2);
+  assert.ok(appliedCopy.every(text => text.includes('Canal Bicycle. Bike types: Mountain, Road. Families:') && !/ \\./.test(text)));
+  assert.doesNotMatch(await evaluate('document.body.innerText'), /this PR/i);
   assert.match(await evaluate(`document.querySelector('#forecast_metrics').innerText`), /MAE \(USD\/month\)|MAE/);
   await command('Emulation.setDeviceMetricsOverride', { width: 1440, height: 1440, deviceScaleFactor: 1, mobile: false });
   await waitFor(`document.querySelector('#validation_plot svg.main-svg') && document.querySelector('#future_plot svg.main-svg') && !document.documentElement.classList.contains('shiny-busy')`, 'rendered forecast plots after desktop resize');
@@ -244,6 +274,7 @@ try {
     socket.close();
   }
   let terminal;
+  let profileRemoved = false;
   try {
     if (ownership) {
       await signalGroup('SIGTERM');
@@ -252,20 +283,31 @@ try {
       await Promise.race([exited, delay(5000)]);
       for (let attempt = 0; attempt < 50 && (await ownedGroup()).length; attempt++) await delay(100);
       const remaining = await ownedGroup();
-      terminal = { pid: chrome.pid, pgid: chrome.pid, startTicks: ownership.startTicks, reaped: !alive(), exitCode: chrome.exitCode, signal: chrome.signalCode, remaining };
-      await writeFile(join(evidence, 'CHROME-TERMINAL.json'), JSON.stringify(terminal, null, 2) + '\n');
+      terminal = { created: true, pid: chrome.pid, pgid: chrome.pid, startTicks: ownership.startTicks, reaped: !alive(), exitCode: chrome.exitCode, signal: chrome.signalCode, remaining };
       if (remaining.length || alive()) throw new Error('Chrome group cleanup is not proved.');
+      const actual = await lstat(profile);
+      assert.ok(actual.isDirectory() && !actual.isSymbolicLink() && actual.dev === profileIdentity.dev && actual.ino === profileIdentity.ino && actual.uid === profileIdentity.uid);
       await rm(profile, { recursive: true, force: true });
-    } else if (!spawnError) throw new Error('Chrome ownership was not acquired. Profile retained.');
+      profileRemoved = true;
+    } else if (spawnError && !childCreated && chrome.pid === undefined) {
+      terminal = { created: false, pid: null, pgid: null, startTicks: null, reaped: false, exitCode: null, signal: null, remaining: [] };
+      const actual = await lstat(profile);
+      assert.ok(actual.isDirectory() && !actual.isSymbolicLink() && actual.dev === profileIdentity.dev && actual.ino === profileIdentity.ino && actual.uid === process.getuid() && (actual.mode & 0o777) === 0o700);
+      assert.deepEqual(await readdir(profile), [], 'An unused profile must be empty.');
+      await rmdir(profile);
+      profileRemoved = true;
+    } else throw new Error('Chrome ownership was not acquired. Profile retained.');
   } catch (error) {
     cleanupErrors.push(error);
   }
   for (const value of pending.values()) clearTimeout(value.timer);
+  await writeFile(join(evidence, 'CHROME-TERMINAL.json'), JSON.stringify(terminal ?? { created: childCreated, pid: chrome.pid ?? null, reaped: false, cleanupProved: false }, null, 2) + '\n');
+  await writeFile(join(evidence, 'PROFILE-TERMINAL.json'), JSON.stringify({ path: profile, dev: profileIdentity.dev, ino: profileIdentity.ino, exclusivelyCreated: true, noChildCreated: !childCreated, removed: profileRemoved }, null, 2) + '\n');
   await writeFile(join(evidence, 'browser-results.json'), JSON.stringify(records, null, 2) + '\n');
   await writeFile(join(evidence, 'chrome.stderr'), stderr);
-  await writeFile(join(evidence, 'ERRORS.json'), JSON.stringify({ primary: primary?.stack ?? null, cleanup: cleanupErrors.map(error => error.stack ?? String(error)) }, null, 2) + '\n');
+  await writeFile(join(evidence, 'ERRORS.json'), JSON.stringify({ primary: primary?.stack ?? null, primaryDetails: primary ? { name: primary.name, message: primary.message, code: primary.code ?? null, errno: primary.errno ?? null, syscall: primary.syscall ?? null, path: primary.path ?? null, spawnargs: primary.spawnargs ?? null } : null, cleanup: cleanupErrors.map(error => error.stack ?? String(error)) }, null, 2) + '\n');
 }
 if (primary && cleanupErrors.length) throw new AggregateError([primary, ...cleanupErrors], 'Browser check failed and cleanup has errors.', { cause: primary });
 if (primary) throw primary;
 if (cleanupErrors.length) throw new AggregateError(cleanupErrors, 'Browser cleanup failed.');
-console.log('Browser smoke passed. Three actual app captures saved in docs/screenshots.');
+console.log('Browser smoke passed. Three actual app captures saved in run evidence.' + (updateImages ? ' Public screenshots updated by explicit opt-in.' : ' Public screenshots unchanged.'));

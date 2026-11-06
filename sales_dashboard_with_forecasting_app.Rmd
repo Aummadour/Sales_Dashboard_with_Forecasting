@@ -158,7 +158,7 @@ renderUI({
       format(result$train_start, '%Y-%m'), format(result$train_end, '%Y-%m'),
       format(result$test_start, '%Y-%m'), format(result$test_end, '%Y-%m'))),
     tags$p('Fixed regression of log(1 + monthly revenue) on time and month. The baseline repeats the same month from the previous year. The heldout months do not train either evaluation forecast.'),
-    tags$p(paste('Applied stores:', paste(applied()$shops, collapse = ', '), '. Bike types:', paste(applied()$category_1, collapse = ', '), '. Families:', paste(applied()$category_2, collapse = ', '))),
+    tags$p(paste0('Applied stores: ', paste(applied()$shops, collapse = ', '), '. Bike types: ', paste(applied()$category_1, collapse = ', '), '. Families: ', paste(applied()$category_2, collapse = ', '))),
     tags$h4('Heldout accuracy'),
     tableOutput('forecast_metrics'),
     tags$p(if (baseline_wins) 'The seasonal naive baseline has lower MAE for this selection.' else 'Compare both error measures. Results can differ by selection.'),
@@ -179,7 +179,7 @@ Row {.content-row}
 
 ### Period comparison
 
-Added in this PR: compare the applied stores and categories with the immediately preceding period of equal length. The components describe revenue accounting. They do not prove causes.
+Compare the applied stores and categories with the immediately preceding period of equal length. The components describe revenue accounting. They do not prove causes.
 
 ```{r comparison, echo=FALSE}
 renderUI({
@@ -192,7 +192,7 @@ renderUI({
       tags$tr(tags$th(result$components$driver[index], scope = 'row'), tags$td(money(result$components$change[index], 2)))
     }), tags$tr(tags$th('Total observed change', scope = 'row'), tags$td(money(result$change, 2)))))
   tagList(
-    tags$p(paste('Synthetic data. Applied stores:', paste(applied()$shops, collapse = ', '), '. Bike types:', paste(applied()$category_1, collapse = ', '), '. Families:', paste(applied()$category_2, collapse = ', '))),
+    tags$p(paste0('Synthetic data. Applied stores: ', paste(applied()$shops, collapse = ', '), '. Bike types: ', paste(applied()$category_1, collapse = ', '), '. Families: ', paste(applied()$category_2, collapse = ', '))),
     tags$p(sprintf('Current: %s to %s. Previous: %s to %s. Each period has %d days.', as.character(current[1]), as.character(current[2]), as.character(previous[1]), as.character(previous[2]), result$periods$days)),
     tags$p(sprintf('Revenue: %s previously, %s currently. Change: %s. Bikes: %s previously, %s currently.',
       money(result$previous_revenue, 2), money(result$current_revenue, 2), money(result$change, 2),
