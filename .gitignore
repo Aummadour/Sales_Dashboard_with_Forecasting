@@ -4,3 +4,7 @@
 .Ruserdata
 *.db
 *.Rproj
+.runtime/
+*_cache/
+*_files/
+sales_dashboard_with_forecasting_app.html

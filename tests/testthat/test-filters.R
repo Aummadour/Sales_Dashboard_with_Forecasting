@@ -1,0 +1,31 @@
+testthat::test_that('Apply commits one coherent selection and Reset applies all defaults without a timer', {
+  path <- tempfile(fileext = '.db')
+  on.exit(unlink(path), add = TRUE)
+  write_synthetic_database(path, generate_synthetic_tables(small_config()))
+  dataset <- load_sales_data(path)
+  defaults <- default_selection(dataset)
+  shiny::testServer(dashboard_filters_server, args = list(dataset = dataset), {
+    session$setInputs(dates = defaults$date_range, types = defaults$category_1,
+      families = defaults$category_2, shops = defaults$shops, time_unit = 'month',
+      forecast_mode = FALSE, horizon = 12, apply = 0, reset = 0)
+    state <- session$returned
+    testthat::expect_equal(state$applied(), defaults)
+    session$setInputs(shops = defaults$shops[1], horizon = 6, forecast_mode = TRUE)
+    testthat::expect_equal(state$applied(), defaults)
+    session$setInputs(apply = 1)
+    testthat::expect_equal(state$applied()$shops, defaults$shops[1])
+    testthat::expect_equal(state$applied()$horizon, 6L)
+    testthat::expect_true(state$applied()$forecast_mode)
+    testthat::expect_equal(unique(state$sales()$bikeshop.name), defaults$shops[1])
+    session$setInputs(horizon = 25, apply = 2)
+    testthat::expect_match(state$error(), 'Changes not applied')
+    testthat::expect_equal(state$applied()$horizon, 6L)
+    session$setInputs(reset = 1)
+    testthat::expect_equal(state$applied(), defaults)
+    testthat::expect_null(state$error())
+    testthat::expect_equal(nrow(state$sales()), nrow(dataset$sales))
+    session$setInputs(shops = character(), horizon = 12, apply = 3)
+    testthat::expect_match(state$error(), 'Select at least one')
+    testthat::expect_equal(state$applied(), defaults)
+  })
+})
