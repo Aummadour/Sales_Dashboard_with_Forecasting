@@ -67,6 +67,18 @@ a:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible
 .chart-title { padding: 1.25rem 1.25rem .5rem; border: 0; font-size: 1.125rem; font-weight: 600; scroll-margin-top: 60px; }
 .chart-stage { padding: .75rem 1.25rem 1.25rem; color: var(--ink); }
 .scope-text { font-weight: 600; }
+.selection-image-note { color: var(--muted); font-size: .8125rem; margin: .75rem 0 .5rem; }
+.selection-gallery { margin: .5rem 0; overflow: visible; }
+.selection-image-group { margin: 1rem 0; min-width: 0; }
+.selection-image-group h4 { font-size: .875rem; margin: 0 0 .5rem; }
+.selection-image-list { display: flex; gap: 1rem; list-style: none; padding: 0 0 .5rem; margin: 0; max-width: 100%; overflow-x: auto; }
+.selection-image-list:focus-visible { outline: 3px solid var(--focus); outline-offset: 3px; }
+.selection-image-list > li { flex: 0 0 15rem; min-width: 0; }
+.selection-image-list figure { margin: 0; }
+.selection-image-list img { display: block; width: 100%; height: 10rem; object-fit: contain; }
+.selection-image-list figcaption { padding-top: .5rem; font-size: .875rem; overflow-wrap: anywhere; }
+.selection-image-parent { display: block; color: var(--muted); font-size: .8125rem; }
+.selection-image-unavailable { min-height: 5rem; display: flex; align-items: center; color: var(--muted); font-size: .875rem; }
 .kpi-group { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 1.5rem; padding: .5rem 0; }
 .kpi-group h3 { font-size: .875rem; font-weight: 600; margin: 0 0 .5rem; color: var(--muted); }
 .kpi-value { font-size: 1.625rem; font-weight: 600; line-height: 1.3; margin-bottom: .25rem; }

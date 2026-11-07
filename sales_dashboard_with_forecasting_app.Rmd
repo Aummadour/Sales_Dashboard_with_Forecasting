@@ -18,6 +18,7 @@ library(plotly)
 library(dplyr)
 library(dbplyr)
 source('04_demand_forecast.R')
+register_selection_image_resources()
 dataset <- load_sales_data('bikes_database.db')
 selection <- dashboard_filters_server('filters', dataset)
 applied <- selection$applied
@@ -100,7 +101,8 @@ renderUI({
       tags$div(tags$h3('Bikes sold'), tags$p(class = 'kpi-value', format(metrics$bikes, big.mark = ','))),
       tags$div(tags$h3('Mountain / Road bikes'), tags$p(class = 'kpi-value', if (is.na(metrics$ratio)) 'Unavailable' else format(round(metrics$ratio, 2), nsmall = 2)),
         tags$p(metrics$ratio_note))),
-    if (!nrow(selected_sales())) tags$p(role = 'status', 'No sales match this applied selection. Widen the date range or change the filters.')
+    if (!nrow(selected_sales())) tags$p(role = 'status', 'No sales match this applied selection. Widen the date range or change the filters.'),
+    selection_images_ui(config)
   )
 })
 ```

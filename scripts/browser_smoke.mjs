@@ -1,6 +1,7 @@
 // Run only against an already started local synthetic-data app.
 // Uses an installed Node with global WebSocket and an installed Chrome. No npm packages.
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import { spawn } from 'node:child_process';
 import { mkdtemp, readFile, readdir, mkdir, writeFile, rm, lstat, rmdir } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -108,6 +109,169 @@ const scrollTo = async heading => evaluate(`(() => {
   element.scrollIntoView({ block: 'start' });
   return true;
 })()`);
+const galleryState = () => evaluate(`(() => {
+  const root = document.querySelector('#selection-illustrations');
+  if (!root) return null;
+  return { summary: root.querySelector('summary').innerText,
+    open: root.querySelector('details').open,
+    caption: root.querySelector('.selection-image-note').innerText,
+    groups: Object.fromEntries([...root.querySelectorAll('.selection-image-group')].map(group =>
+      [group.dataset.imageKind, [...group.querySelectorAll('li')].map(item => item.dataset.imageSlug)])),
+    images: [...root.querySelectorAll('img')].map(image => ({ path: new URL(image.src).pathname,
+      origin: new URL(image.src).origin, alt: image.alt })) };
+})()`);
+// BEGIN keyboard diagnostic: observation only.
+const keyboardTraceSnapshot = () => evaluate(`(() => {
+  const trace = window.__selectionGalleryKeyboardTrace;
+  if (!trace) return null;
+  return { states: trace.states, events: trace.events.map(({ eventRef, ...record }) =>
+      ({ ...record, defaultPreventedAtRead: eventRef.defaultPrevented })), dropped: trace.dropped,
+    current: trace.snapshot() };
+})()`);
+const recordKeyboardState = async stage => {
+  await evaluate(`(() => {
+    const trace = window.__selectionGalleryKeyboardTrace;
+    trace.states.push({ stage: ${JSON.stringify(stage)}, ...trace.snapshot() });
+    return true;
+  })()`);
+  records.push({ keyboardDiagnosticStage: stage, trace: await keyboardTraceSnapshot() });
+};
+// END keyboard diagnostic.
+const inspectGallery = async (expected, name) => {
+  const state = await galleryState();
+  assert.ok(state);
+  assert.deepEqual(state.groups, expected);
+  assert.match(state.caption, /AI-generated fictional illustrations/);
+  assert.equal(state.images.length, Object.values(expected).flat().length);
+  assert.ok(state.images.every(image => image.origin === target.origin &&
+    /^\/selection-images\/[a-z0-9-]+\.webp$/.test(image.path) && image.alt.length > 20));
+  records.push({ selectionGallery: name, state });
+  return state;
+};
+// Fixed response oracles from the reviewed, once-revised illustration set.
+const approvedImageResponses = {
+  "/selection-images/type-road.webp": {
+    "bytes": 57746,
+    "sha256": "e27068a764dcee1c844b52f96064ba3c0e2ff84f12720bc49a4bdf7bb61f17e4"
+  },
+  "/selection-images/type-mountain.webp": {
+    "bytes": 52662,
+    "sha256": "b52e8ffd4e5778f12d950c9186f1b9293e5747b2e59492b8a3fefb33dce3fa41"
+  },
+  "/selection-images/family-endurance.webp": {
+    "bytes": 66158,
+    "sha256": "03eee52821bd6d8c341a78b8790b63ec119873d5a8dcc9529184b584e5785fa5"
+  },
+  "/selection-images/family-race.webp": {
+    "bytes": 41938,
+    "sha256": "99fe41b49ff91c2a60023d8c30040d3ab42c5c91d468bffd787b3f8f421ad841"
+  },
+  "/selection-images/family-trail.webp": {
+    "bytes": 58402,
+    "sha256": "b9c9dcf86fffff9f1d9e97033da7b6a9d4607a211036943c9f3e6c1d92454403"
+  },
+  "/selection-images/family-cross-country.webp": {
+    "bytes": 48434,
+    "sha256": "46a48946e607b95e168fefd0513b9656dff7ca54ca6d6b61c065d627ea75edb9"
+  },
+  "/selection-images/store-cedar-cycles.webp": {
+    "bytes": 121360,
+    "sha256": "ea0b977f5391c5242c8dd8c8cadc4946fc75309ecf72207722d2d35ef44cffb9"
+  },
+  "/selection-images/store-summit-bicycle.webp": {
+    "bytes": 120084,
+    "sha256": "7be262f37423848d9e5c7a0f2fcbb89484e0dd98a55e3cd51c7df44be20c75d9"
+  },
+  "/selection-images/store-juniper-wheels.webp": {
+    "bytes": 126958,
+    "sha256": "29212899376ac59d991bcab098d223f798b08357c5467291c55c04a27ecf55c7"
+  },
+  "/selection-images/store-palmetto-cycle.webp": {
+    "bytes": 132926,
+    "sha256": "784338d39e5b7d89ca47c90030dd4905fe6267d623ab51b375492ffef0d626d8"
+  },
+  "/selection-images/store-canal-bicycle.webp": {
+    "bytes": 128412,
+    "sha256": "2cb0505df6348eb8ee5797f9b15759f573f5343bebe32c615cb4238dbfbc44b2"
+  },
+  "/selection-images/store-sound-cycles.webp": {
+    "bytes": 156532,
+    "sha256": "3e4b735ce03dcaa581c9c6811dafe3cdd6693b51bd14156560124a9f602ef013"
+  },
+  "/selection-images/store-piedmont-wheels.webp": {
+    "bytes": 195722,
+    "sha256": "551de0e6ca850ea79ff7ca4e980dd81e8b5ed534eb1860df9553701d9c614843"
+  },
+  "/selection-images/store-riverbend-cycle.webp": {
+    "bytes": 124918,
+    "sha256": "8eda7c20b0f972b87493d2e5e7effc070204847db8a1902aca7a913bbe907a15"
+  }
+};
+const imageResponseEvidence = [];
+const imageDecodeProgress = [];
+const verifyImageResponses = async () => {
+  const state = await galleryState();
+  assert.deepEqual(state.images.map(image => image.path).sort(), Object.keys(approvedImageResponses).sort());
+  for (const [path, expected] of Object.entries(approvedImageResponses)) {
+    const url = new URL(path, target);
+    assert.equal(url.origin, target.origin);
+    assert.ok(Object.hasOwn(approvedImageResponses, url.pathname) && !url.search && !url.hash);
+    const record = { url: url.href, expected };
+    imageResponseEvidence.push(record);
+    await writeFile(join(evidence, 'IMAGE-RESPONSES.json'), JSON.stringify(imageResponseEvidence, null, 2) + '\n');
+    const response = await fetch(url, { redirect: 'error', signal: AbortSignal.timeout(10000) });
+    Object.assign(record, { status: response.status, contentType: response.headers.get('content-type'), responseUrl: response.url });
+    await writeFile(join(evidence, 'IMAGE-RESPONSES.json'), JSON.stringify(imageResponseEvidence, null, 2) + '\n');
+    const body = Buffer.from(await response.arrayBuffer());
+    Object.assign(record, { bytes: body.length, sha256: createHash('sha256').update(body).digest('hex') });
+    await writeFile(join(evidence, 'IMAGE-RESPONSES.json'), JSON.stringify(imageResponseEvidence, null, 2) + '\n');
+    assert.equal(record.responseUrl, url.href);
+    assert.equal(record.status, 200);
+    assert.equal(record.contentType?.split(';')[0].trim().toLowerCase(), 'image/webp');
+    assert.equal(record.bytes, expected.bytes);
+    assert.equal(record.sha256, expected.sha256);
+    record.passed = true;
+  }
+  await writeFile(join(evidence, 'IMAGE-RESPONSES.json'), JSON.stringify(imageResponseEvidence, null, 2) + '\n');
+  records.push({ approvedImageResponses: imageResponseEvidence });
+};
+const decodeGallery = async () => {
+  await evaluate(`document.querySelector('#selection-illustrations details').open = true`);
+  // Visit every selected figure, including the horizontal lists, to load lazy images.
+  const urls = await evaluate(`[...document.querySelectorAll('#selection-illustrations img')].map(image => image.src)`);
+  for (const url of urls) {
+    const parsed = new URL(url);
+    assert.equal(parsed.origin, target.origin);
+    assert.ok(Object.hasOwn(approvedImageResponses, parsed.pathname) && !parsed.search && !parsed.hash);
+    const progress = { url, state: 'before-decode' };
+    imageDecodeProgress.push(progress);
+    await writeFile(join(evidence, 'IMAGE-DECODE-PROGRESS.json'), JSON.stringify(imageDecodeProgress, null, 2) + '\n');
+    const decoded = await evaluate(`(async () => {
+      const image = [...document.querySelectorAll('#selection-illustrations img')].find(image => image.src === ${JSON.stringify(url)});
+      if (!image) throw new Error('Approved gallery image disappeared.');
+      image.scrollIntoView({ block: 'center', inline: 'center' });
+      await image.decode();
+      return { width: image.naturalWidth, height: image.naturalHeight };
+    })()`);
+    Object.assign(progress, { state: 'decoded', ...decoded });
+    await writeFile(join(evidence, 'IMAGE-DECODE-PROGRESS.json'), JSON.stringify(imageDecodeProgress, null, 2) + '\n');
+    assert.deepEqual(decoded, { width: 960, height: 640 });
+  }
+  const layout = await evaluate(`({ images: [...document.querySelectorAll('#selection-illustrations img')].map(image =>
+    ({ width: image.naturalWidth, height: image.naturalHeight, fit: getComputedStyle(image).objectFit })),
+    lists: [...document.querySelectorAll('.selection-image-list')].map(list => ({
+      width: list.getBoundingClientRect().width, viewport: innerWidth,
+      height: list.getBoundingClientRect().height, keyboard: list.tabIndex === 0 })) })`);
+  assert.ok(layout.images.every(image => image.width > 0 && image.height > 0 && image.fit === 'contain'));
+  assert.ok(layout.lists.every(list => list.width <= list.viewport && list.height < 320 && list.keyboard));
+  records.push({ selectionImageDecodeAndBounds: layout });
+};
+const allGallery = {
+  stores: ['store-canal-bicycle', 'store-cedar-cycles', 'store-juniper-wheels', 'store-palmetto-cycle',
+    'store-piedmont-wheels', 'store-riverbend-cycle', 'store-sound-cycles', 'store-summit-bicycle'],
+  types: ['type-mountain', 'type-road'],
+  families: ['family-cross-country', 'family-endurance', 'family-race', 'family-trail'],
+};
 try {
   await launched;
   ownership = await processState(chrome.pid);
@@ -157,6 +321,86 @@ try {
   await waitFor(`document.querySelector('.kpi-group') && [...document.querySelectorAll('.js-plotly-plot')].filter(plot => plot.querySelector('svg.main-svg')).length >= 2 && !document.documentElement.classList.contains('shiny-busy')`, 'initial synthetic overview');
   const initial = await evaluate(`({ scope: document.querySelector('.scope-text').innerText, metrics: document.querySelector('.kpi-group').innerText })`);
   assert.match(initial.scope, /All 8 fictional stores/);
+  const initialGallery = await inspectGallery(allGallery, 'initial all applied values');
+  assert.equal(initialGallery.open, false, 'The all-selection gallery starts collapsed.');
+  assert.match(initialGallery.summary, /Stores: 8\. Bike types: 2\. Families: 4\./);
+  // BEGIN keyboard diagnostic: listeners never change default behavior.
+  await evaluate(`(() => {
+    const summary = document.querySelector('#selection-illustrations summary');
+    const details = document.querySelector('#selection-illustrations details');
+    const describe = node => {
+      if (!node) return null;
+      const path = [];
+      for (let cursor = node; cursor instanceof Element; cursor = cursor.parentElement) {
+        path.push({ tag: cursor.tagName, childIndex: cursor.parentElement ?
+          [...cursor.parentElement.children].indexOf(cursor) : 0, id: cursor.id });
+      }
+      return { nodeName: node.nodeName, attributes: node instanceof Element ?
+        Object.fromEntries([...node.attributes].map(attribute => [attribute.name, attribute.value])) : {},
+        path: path.reverse(), text: node.textContent?.slice(0, 256) ?? null };
+    };
+    const snapshot = () => ({ time: performance.now(), documentHasFocus: document.hasFocus(),
+      visibility: document.visibilityState, activeElement: describe(document.activeElement),
+      activeIsSummary: document.activeElement === summary, summary: describe(summary),
+      summaryConnected: summary.isConnected, detailsConnected: details.isConnected,
+      sameSummary: document.querySelector('#selection-illustrations summary') === summary,
+      sameDetails: document.querySelector('#selection-illustrations details') === details,
+      summaryTabIndex: summary.tabIndex, open: details.open });
+    const trace = { states: [], events: [], dropped: 0, snapshot };
+    window.__selectionGalleryKeyboardTrace = trace;
+    for (const type of ['keydown', 'keypress', 'keyup', 'click', 'toggle']) {
+      document.addEventListener(type, event => {
+        if (trace.events.length >= 128) { trace.dropped++; return; }
+        const record = { eventRef: event, type: event.type, key: event.key ?? null, code: event.code ?? null,
+          keyCode: event.keyCode ?? null, charCode: event.charCode ?? null, which: event.which ?? null,
+          isTrusted: event.isTrusted, cancelable: event.cancelable, defaultPrevented: event.defaultPrevented,
+          oldState: event.oldState ?? null, newState: event.newState ?? null,
+          target: describe(event.target), stateAtCapture: snapshot() };
+        trace.events.push(record);
+        queueMicrotask(() => { record.defaultPreventedAtMicrotask = event.defaultPrevented;
+          record.stateAtMicrotask = snapshot(); });
+      }, true);
+    }
+    return true;
+  })()`);
+  await recordKeyboardState('before-focus');
+  // END keyboard diagnostic.
+  await evaluate(`document.querySelector('#selection-illustrations summary').focus()`);
+  // BEGIN keyboard diagnostic.
+  await recordKeyboardState('after-focus-before-keydown');
+  // END keyboard diagnostic.
+  await command('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13, text: '\r', unmodifiedText: '\r' });
+  // BEGIN keyboard diagnostic.
+  await recordKeyboardState('after-keydown-before-keyup');
+  // END keyboard diagnostic.
+  await command('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13 });
+  // BEGIN keyboard diagnostic.
+  await recordKeyboardState('after-keyup');
+  // END keyboard diagnostic.
+  await waitFor(`document.querySelector('#selection-illustrations details').open`, 'keyboard gallery disclosure', 15000);
+  // BEGIN keyboard diagnostic.
+  await recordKeyboardState('after-open-predicate');
+  // END keyboard diagnostic.
+  await waitFor(`window.__selectionGalleryKeyboardTrace.events.some(event => event.type === 'toggle' && event.newState === 'open')`, 'actual keyboard open toggle', 15000);
+  const keyboardActivation = await keyboardTraceSnapshot();
+  const focusedSummary = keyboardActivation.states.find(state => state.stage === 'after-focus-before-keydown').summary;
+  const targetIsSummary = event => JSON.stringify(event.target?.path) === JSON.stringify(focusedSummary.path);
+  assert.ok(keyboardActivation.events.some(event => event.type === 'keypress' && event.key === 'Enter' &&
+    event.charCode === 13 && event.isTrusted && targetIsSummary(event) &&
+    event.stateAtCapture.activeIsSummary && event.stateAtCapture.documentHasFocus && event.stateAtCapture.sameSummary),
+    'Trusted Enter character input must reach the focused summary.');
+  assert.ok(keyboardActivation.events.some(event => event.type === 'click' && event.isTrusted && targetIsSummary(event)),
+    'Enter must activate the actual summary.');
+  assert.ok(keyboardActivation.events.some(event => event.type === 'toggle' && event.isTrusted &&
+    event.newState === 'open' && event.target?.nodeName === 'DETAILS' && event.stateAtCapture.sameDetails));
+  assert.equal(keyboardActivation.current.open, true);
+  records.push({ trustedKeyboardActivation: keyboardActivation });
+  await verifyImageResponses();
+  await decodeGallery();
+  await scrollTo('Applied selection');
+  await capture('selection-images-desktop.png');
+  await evaluate(`document.querySelector('#selection-illustrations details').open = false`);
+  await scrollTo('Applied selection');
   const light = await evaluate(`({ background: getComputedStyle(document.body).backgroundColor, color: getComputedStyle(document.body).color })`);
   assert.ok(contrast(light.color, light.background) >= 4.5, 'Light body text must have readable contrast.');
   records.push({ lightContrast: { ...light, ratio: contrast(light.color, light.background) } });
@@ -189,10 +433,14 @@ try {
     document.querySelector('#filters-horizon').value = '6';
     document.querySelector('#filters-horizon').dispatchEvent(new Event('change', { bubbles: true }));
     document.querySelector('#filters-forecast_mode').click();`);
+  await waitFor(`document.querySelector('#filters-pending')?.innerText.includes('Changes are pending')`, 'pending image selection feedback', 15000);
+  const pendingGallery = await inspectGallery(allGallery, 'pending controls preserve all applied images');
+  assert.deepEqual(pendingGallery, initialGallery);
   assert.equal(await evaluate(`document.querySelector('.scope-text').innerText`), initial.scope);
   await evaluate(`document.querySelector('#filters-apply').click()`);
   await waitFor(`document.querySelector('.scope-text')?.innerText.includes('Canal Bicycle') && document.querySelector('#forecast_metrics table')?.innerText.includes('Seasonal naive') && document.body.innerText.includes('Future horizon: 6 months') && !document.documentElement.classList.contains('shiny-busy')`, 'coherent applied forecast selection');
   assert.notEqual(await evaluate(`document.querySelector('.kpi-group').innerText`), initial.metrics);
+  await inspectGallery({ ...allGallery, stores: ['store-canal-bicycle'] }, 'applied single store');
   assert.match(await evaluate('document.body.innerText'), /Synthetic data accuracy says nothing about real retail performance/);
   const appliedCopy = await evaluate(`[...document.querySelectorAll('p')].map(node => node.innerText).filter(text => text.includes('Applied stores:'))`);
   records.push({ appliedFilterCopy: appliedCopy });
@@ -249,10 +497,48 @@ try {
   await evaluate(`document.querySelector('#filters-reset').click()`);
   await waitFor(`document.querySelector('.scope-text')?.innerText === ${JSON.stringify(initial.scope)} && document.querySelector('#filters-horizon')?.value === '12' && !document.querySelector('#filters-forecast_mode')?.checked && !document.documentElement.classList.contains('shiny-busy')`, 'Reset defaults');
   assert.equal(await evaluate(`document.querySelector('.kpi-group').innerText`), initial.metrics);
+  await inspectGallery(allGallery, 'Reset restores all applied images');
   // Empty selections must be refused without changing the applied view.
   await evaluate(`document.querySelector('#filters-shops').selectize.clear(); document.querySelector('#filters-apply').click()`);
   await waitFor(`document.querySelector('#filters-error')?.innerText.includes('Select at least one')`, 'empty store refusal');
   assert.equal(await evaluate(`document.querySelector('.scope-text').innerText`), initial.scope);
+  await inspectGallery(allGallery, 'empty selection refusal preserves applied images');
+  // Extra image transitions keep forecasting off and retain all prior behavior checks.
+  await evaluate(`document.querySelector('#filters-shops').selectize.setValue(['Cedar Cycles', 'Canal Bicycle']);
+    document.querySelector('#filters-families').selectize.setValue(['Cross Country', 'Trail']);
+    for (const box of document.querySelectorAll('#filters-types input')) {
+      const wanted = box.value === 'Mountain'; if (box.checked !== wanted) box.click();
+    }`);
+  await waitFor(`document.querySelector('#filters-pending')?.innerText.includes('Changes are pending')`, 'multiple pending image feedback', 15000);
+  await inspectGallery(allGallery, 'pending multiple values preserve Reset images');
+  await evaluate(`document.querySelector('#filters-apply').click()`);
+  await waitFor(`document.querySelector('.scope-text')?.innerText.includes('Cedar Cycles, Canal Bicycle') && !document.querySelector('#filters-error')?.innerText && !document.documentElement.classList.contains('shiny-busy')`, 'multiple applied images', 15000);
+  await inspectGallery({ stores: ['store-cedar-cycles', 'store-canal-bicycle'],
+    types: ['type-mountain'], families: ['family-cross-country', 'family-trail'] }, 'applied multiple values');
+  await evaluate(`document.querySelector('#filters-shops').selectize.setValue(['Canal Bicycle']);
+    document.querySelector('#filters-families').selectize.setValue(['Race']);
+    for (const box of document.querySelectorAll('#filters-types input')) {
+      const wanted = box.value === 'Road'; if (box.checked !== wanted) box.click();
+    }
+    document.querySelector('#filters-apply').click();`);
+  await waitFor(`document.querySelector('.scope-text')?.innerText.includes('Canal Bicycle. Road. Families: Race.') && !document.documentElement.classList.contains('shiny-busy')`, 'single type and family images', 15000);
+  await inspectGallery({ stores: ['store-canal-bicycle'], types: ['type-road'], families: ['family-race'] }, 'applied single values');
+  await decodeGallery();
+  await scrollTo('Applied selection');
+  const galleryPhone = await evaluate(`({ viewport: innerWidth, width: document.documentElement.scrollWidth,
+    controls: ['filters-shops', 'filters-families', 'filters-types', 'filters-apply', 'filters-reset'].map(id => {
+      const node = document.getElementById(id);
+      const visible = node.selectize?.$control?.[0] ?? node;
+      const box = visible.getBoundingClientRect();
+      return { id, left: box.left, right: box.right, height: box.height, enabled: !node.disabled };
+    }) })`);
+  assert.ok(galleryPhone.width <= galleryPhone.viewport + 1);
+  assert.ok(galleryPhone.controls.every(control => control.enabled && control.height > 0 && control.left >= 0 && control.right <= galleryPhone.viewport + 1));
+  records.push({ selectionGalleryPhone: galleryPhone });
+  await capture('selection-images-phone.png');
+  await evaluate(`document.querySelector('#filters-reset').click()`);
+  await waitFor(`document.querySelector('.scope-text')?.innerText === ${JSON.stringify(initial.scope)} && !document.documentElement.classList.contains('shiny-busy')`, 'image Reset after single selection', 15000);
+  await inspectGallery(allGallery, 'final Reset restores images');
   assert.deepEqual(exceptions, []);
   assert.deepEqual(protocolErrors, []);
   assert.deepEqual(blocked, [], 'The app must not require external browser assets.');
@@ -269,6 +555,17 @@ try {
     } catch (error) { records.push({ failureBodyError: error.message }); }
   }
 } finally {
+  // BEGIN keyboard diagnostic: preserve trace on either primary outcome.
+  if (socket?.readyState === WebSocket.OPEN) {
+    try {
+      const trace = await keyboardTraceSnapshot();
+      if (trace) {
+        await writeFile(join(evidence, 'KEYBOARD-TRACE.json'), JSON.stringify(trace, null, 2) + '\n', { flag: 'wx' });
+        records.push({ keyboardTraceFinal: trace });
+      }
+    } catch (error) { records.push({ keyboardTraceSaveError: error.stack ?? String(error) }); }
+  }
+  // END keyboard diagnostic.
   if (socket?.readyState === WebSocket.OPEN) {
     try { await command('Browser.close'); } catch (error) { cleanupErrors.push(error); }
     socket.close();
@@ -310,4 +607,4 @@ try {
 if (primary && cleanupErrors.length) throw new AggregateError([primary, ...cleanupErrors], 'Browser check failed and cleanup has errors.', { cause: primary });
 if (primary) throw primary;
 if (cleanupErrors.length) throw new AggregateError(cleanupErrors, 'Browser cleanup failed.');
-console.log('Browser smoke passed. Three actual app captures saved in run evidence.' + (updateImages ? ' Public screenshots updated by explicit opt-in.' : ' Public screenshots unchanged.'));
+console.log('Browser smoke passed. Actual app captures saved in run evidence.' + (updateImages ? ' Public screenshots updated by explicit opt-in.' : ' Public screenshots unchanged.'));
