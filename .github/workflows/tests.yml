@@ -1,0 +1,30 @@
+name: R tests
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - uses: r-lib/actions/setup-r@d3c5ef7aa1818ef107b0f28a4fa80bdb45c1b0db # v2.8.5
+        with:
+          r-version: 'release'
+          use-public-rspm: true
+      - name: Install system dependencies for R packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends libuv1-dev libcurl4-openssl-dev libssl-dev pkg-config
+      - name: Install test dependencies
+        run: Rscript --vanilla -e 'p <- c("testthat", "DBI", "RSQLite", "dplyr", "dbplyr", "maps", "plotly", "shiny", "jsonlite", "flexdashboard"); repo <- Sys.getenv("RSPM"); stopifnot(nzchar(repo)); install.packages(p, repos = repo); stopifnot(all(vapply(p, requireNamespace, logical(1), quietly = TRUE)))'
+      - name: Run testthat suite
+        run: Rscript --vanilla scripts/test.R

@@ -1,0 +1,31 @@
+name: Bug report
+description: Report a problem with the dashboard
+body:
+  - type: markdown
+    attributes:
+      value: Please remove personal data and credentials from any example or output. Report security vulnerabilities privately using SECURITY.md.
+  - type: input
+    id: environment
+    attributes:
+      label: R version and operating system
+      description: Include the browser and its version for a display problem.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: Use synthetic data and include the selections or commands that show the problem.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected and actual results
+    validations:
+      required: true
+  - type: textarea
+    id: details
+    attributes:
+      label: Relevant output or screenshots
+      description: Remove private details before posting.
