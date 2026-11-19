@@ -11,6 +11,7 @@ permissions:
 jobs:
   test:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
@@ -20,6 +21,6 @@ jobs:
           r-version: 'release'
           use-public-rspm: true
       - name: Install test dependencies
-        run: Rscript --vanilla -e 'install.packages(c("testthat", "DBI", "RSQLite", "dplyr", "dbplyr", "maps", "plotly", "shiny", "jsonlite"), repos = "https://cloud.r-project.org")'
+        run: Rscript --vanilla -e 'p <- c("testthat", "DBI", "RSQLite", "dplyr", "dbplyr", "maps", "plotly", "shiny", "jsonlite", "flexdashboard"); repo <- Sys.getenv("RSPM"); stopifnot(nzchar(repo)); install.packages(p, repos = repo); stopifnot(all(vapply(p, requireNamespace, logical(1), quietly = TRUE)))'
       - name: Run testthat suite
         run: Rscript --vanilla scripts/test.R
