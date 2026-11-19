@@ -1,0 +1,21 @@
+name: Feature request
+description: Suggest a change to the dashboard
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What are you trying to do?
+      description: Describe the task and the difficulty you encountered.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: What change would help?
+    validations:
+      required: true
+  - type: textarea
+    id: workaround
+    attributes:
+      label: How do you handle this now?
+      description: Share an example using synthetic data if useful.
